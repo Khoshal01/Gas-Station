@@ -1,0 +1,25 @@
+import {test,expect} from '@playwright/test';
+import {mockStation,signIn} from './helpers';
+test('overview totals update after shifts and expenses, with responsive RTL layout',async({page})=>{
+ await mockStation(page);await signIn(page);
+ await expect(page.getByRole('button',{name:'Total fuel inventory: 8,420 L. View details',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Staff on duty: 0. View details',exact:true})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Financial summary',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Staff on duty: 0. View details',exact:true}).click();
+ await page.getByRole('button',{name:'Start shift',exact:true}).click();
+ await page.getByRole('button',{name:'Overview',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Staff on duty: 1. View details',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Expenses',exact:true}).click();
+ await page.getByRole('button',{name:'Record expense',exact:true}).click();
+ await page.getByLabel('Expense reason',{exact:true}).fill('Cleaning');
+ await page.getByLabel('Amount (AFN)',{exact:true}).fill('350');
+ await page.getByRole('button',{name:'Save record',exact:true}).click();
+ await page.getByRole('button',{name:'Overview',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Total expenses: 350 ؋. View details',exact:true})).toBeVisible();
+ await page.screenshot({path:'artifacts/overview-expanded.png',fullPage:true});
+ await page.setViewportSize({width:390,height:844});
+ await page.locator('.topbar select').selectOption('fa');
+ await expect(page.locator('html')).toHaveAttribute('dir','rtl');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.screenshot({path:'artifacts/overview-mobile-dari.png',fullPage:true});
+});

@@ -1,7 +1,8 @@
+import {mockStation,signIn} from './helpers';
 import {test,expect} from '@playwright/test';
 test('login, languages, transactions, reports and persistence',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto('/');
+ await mockStation(page);await page.goto('/');
  await expect(page.getByRole('heading',{name:'Welcome back.'})).toBeVisible();
  await page.screenshot({path:'artifacts/login-desktop.png',fullPage:true});
  await page.getByLabel('Language',{exact:true}).selectOption('ps');
@@ -11,7 +12,7 @@ test('login, languages, transactions, reports and persistence',async({page})=>{
  await expect(page.getByRole('heading',{name:'خوش آمدید.'})).toBeVisible();
  await page.screenshot({path:'artifacts/login-dari.png',fullPage:true});
  await page.getByRole('combobox').selectOption('en');
- await page.getByRole('button',{name:'Explore demo station'}).click();
+ await signIn(page);
  await expect(page.getByRole('heading',{name:'Station floor'})).toBeVisible();
  await page.getByRole('button',{name:'Record sale',exact:true}).click();
  await page.getByLabel('Liters',{exact:true}).fill('10');
@@ -29,23 +30,23 @@ test('login, languages, transactions, reports and persistence',async({page})=>{
  await page.getByRole('button',{name:'Expenses',exact:true}).click();
  await page.getByRole('button',{name:'Record expense',exact:true}).click();
  await page.getByLabel('Amount (AFN)',{exact:true}).fill('100');
- await page.getByLabel('Reference / notes',{exact:true}).fill('Maintenance supplies');
+ await page.getByLabel('Expense reason',{exact:true}).fill('Maintenance supplies');
  await page.getByRole('button',{name:'Save record',exact:true}).click();
  await expect(page.getByText('Maintenance supplies')).toBeVisible();
  await page.getByRole('button',{name:'Reports',exact:true}).click();
  await page.getByRole('button',{name:'Weekly',exact:true}).click();
- const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export CSV'}).click();expect((await download).suggestedFilename()).toContain('weekly');
+ const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export complete CSV'}).click();expect((await download).suggestedFilename()).toContain('weekly');
  await page.getByRole('button',{name:'Overview',exact:true}).click();
  await page.screenshot({path:'artifacts/dashboard-desktop.png',fullPage:true});
- await page.reload();await page.getByRole('button',{name:'Explore demo station'}).click();
+ await page.reload();
  await expect(page.getByText('Browser test sale',{exact:true})).toBeVisible();
  expect(errors).toEqual([]);
 });
 test('mobile login and dashboard fit viewport',async({page})=>{
- await page.setViewportSize({width:390,height:844});await page.goto('/');
+ await page.setViewportSize({width:390,height:844});await mockStation(page);await page.goto('/');
  await page.screenshot({path:'artifacts/login-mobile.png',fullPage:true});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
- await page.getByRole('button',{name:'Explore demo station'}).click();
+ await signIn(page);
  await page.screenshot({path:'artifacts/dashboard-mobile.png',fullPage:true});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });

@@ -1,7 +1,8 @@
+import {mockStation,signIn} from './helpers';
 import {test,expect} from '@playwright/test';
 test('short desktop sidebar contains footer and scrolls navigation in every language',async({page})=>{
- await page.setViewportSize({width:1280,height:600});await page.goto('/');
- await page.getByRole('button',{name:'Explore demo station'}).click();
+ await page.setViewportSize({width:1280,height:600});await mockStation(page);await page.goto('/');
+ await signIn(page);
  for(const lang of ['en','ps','fa']){
   await page.locator('.topbar select').selectOption(lang);
   const bounds=await page.locator('.sidebar').evaluate(el=>{

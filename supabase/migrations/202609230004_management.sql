@@ -1,0 +1,94 @@
+-- Apply after migrations 001-003. Existing records without the new fields remain readable.
+begin;
+create or replace function public.validate_station_management(payload jsonb)
+returns boolean language plpgsql immutable set search_path = '' as $$
+declare
+  item jsonb;
+  staff_ids text[] := array[]::text[];
+  open_staff text[] := array[]::text[];
+  start_time timestamptz;
+  end_time timestamptz;
+begin
+  if not public.validate_station_data(payload) then return false; end if;
+  if payload ? 'settings' then
+    if jsonb_typeof(payload->'settings') is distinct from 'object'
+      or jsonb_typeof(payload->'settings'->'name') is distinct from 'string'
+      or length(btrim(payload->'settings'->>'name')) not between 1 and 100
+      or jsonb_typeof(payload->'settings'->'address') is distinct from 'string'
+      or length(btrim(payload->'settings'->>'address')) not between 1 and 250
+      or coalesce(payload->'settings'->>'theme','') not in ('light','dark') then return false; end if;
+  end if;
+  for item in select value from jsonb_array_elements(payload->'staff') loop
+    staff_ids := array_append(staff_ids,item->>'id');
+    if item ? 'salary' then
+      if jsonb_typeof(item->'salary') is distinct from 'number' then return false; end if;
+      if (item->>'salary')::numeric < 0 then return false; end if;
+    end if;
+  end loop;
+  for item in select value from jsonb_array_elements(payload->'expenses') loop
+    if length(btrim(coalesce(nullif(item->>'reason',''),item->>'note',''))) = 0 then return false; end if;
+    if item->>'category' = 'salary' then
+      if coalesce(item->>'staffId','') <> all(staff_ids)
+        or coalesce(item->>'salaryMonth','') !~ '^\d{4}-(0[1-9]|1[0-2])$'
+        or jsonb_typeof(item->'salaryDue') is distinct from 'number' then return false; end if;
+      if (item->>'salaryDue')::numeric <= 0 then return false; end if;
+    end if;
+  end loop;
+  if exists (
+    select 1 from jsonb_array_elements(payload->'expenses') e
+    where e->>'category' = 'salary'
+    group by e->>'staffId',e->>'salaryMonth'
+    having min((e->>'salaryDue')::numeric) <> max((e->>'salaryDue')::numeric)
+      or sum((e->>'amount')::numeric) > min((e->>'salaryDue')::numeric)
+  ) then return false; end if;
+  for item in select value from jsonb_array_elements(payload->'shifts') loop
+    -- Legacy free-text shifts have no staffId and remain in history.
+    if item ? 'staffId' then
+      if coalesce(item->>'staffId','') <> all(staff_ids) or jsonb_typeof(item->'startedAt') is distinct from 'string' then return false; end if;
+      start_time := (item->>'startedAt')::timestamptz;
+      if item->>'status' = 'open' then
+        if item->>'endedAt' is not null or (item->>'staffId') = any(open_staff) then return false; end if;
+        open_staff := array_append(open_staff,item->>'staffId');
+      else
+        if jsonb_typeof(item->'endedAt') is distinct from 'string' then return false; end if;
+        end_time := (item->>'endedAt')::timestamptz;
+        if end_time < start_time then return false; end if;
+      end if;
+    end if;
+  end loop;
+  return true;
+exception when others then return false;
+end;
+$$;
+revoke all on function public.validate_station_management(jsonb) from public,anon;
+grant execute on function public.validate_station_management(jsonb) to authenticated;
+
+create or replace function public.touch_station_workspace()
+returns trigger language plpgsql set search_path = '' as $$
+declare
+  payment jsonb;
+  expected_due numeric;
+begin
+  if tg_op = 'INSERT' then
+    if new.version != 0 then raise exception 'Initial version must be zero'; end if;
+  else
+    if new.owner_id is distinct from old.owner_id then raise exception 'Owner cannot change'; end if;
+    if new.version != old.version + 1 then raise exception 'Version must advance by one'; end if;
+  end if;
+  if not public.validate_station_management(new.data) then raise exception 'Invalid station data'; end if;
+  for payment in select value from jsonb_array_elements(new.data->'expenses') where value->>'category' = 'salary' loop
+    expected_due := null;
+    if tg_op = 'UPDATE' then
+      select (e->>'salaryDue')::numeric into expected_due from jsonb_array_elements(old.data->'expenses') e
+      where e->>'category' = 'salary' and e->>'staffId' = payment->>'staffId' and e->>'salaryMonth' = payment->>'salaryMonth' limit 1;
+    end if;
+    if expected_due is null then
+      select coalesce((s->>'salary')::numeric,0) into expected_due from jsonb_array_elements(new.data->'staff') s where s->>'id' = payment->>'staffId';
+    end if;
+    if (payment->>'salaryDue')::numeric is distinct from expected_due then raise exception 'Salary amount does not match the monthly salary'; end if;
+  end loop;
+  new.updated_at = now();
+  return new;
+end;
+$$;
+commit;

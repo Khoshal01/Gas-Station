@@ -1,6 +1,6 @@
 # Northline station management
 
-React + Vite + Tailwind frontend based on the supplied Northline HTML template. IBM Plex Sans/Mono, ivory panels, amber accents, and an animated CSS station illustration. English, Afghanistan Pashto and Afghanistan Dari with RTL layout. Fonts load from Google Fonts with local fallbacks.
+React, Vite and Tailwind frontend with Supabase email/password sign-in. English, Afghanistan Pashto and Afghanistan Dari, RTL layouts, AFN currency and Kabul dates. The public demo button has been removed.
 
 ## Run
 
@@ -9,35 +9,41 @@ npm install
 npm run dev
 ```
 
-Open http://127.0.0.1:5173. Select **Explore demo station** to try all pages without credentials. Demo records persist in this browser only. Settings includes a demo reset button.
+Open http://127.0.0.1:5173. Fill `.env` with `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`, then restart Vite. Use only a public publishable/anon key, never a service-role key. Create your email/password account through Supabase Authentication.
+
+## Database and sample data
+
+- New database: run all of `supabase/schema.sql` in Supabase SQL Editor.
+- If migrations 001–003 are already installed: run `supabase/migrations/202609230004_management.sql`.
+- To add sample records to your account: replace `YOUR_LOGIN_EMAIL_HERE` in `supabase/mock-data.sql` with your login email, run the script, and refresh the app. Existing records and tank quantities are preserved; sample sales and deliveries balance each other for existing tanks.
+- See `supabase/README.md` for details.
+
+## Workflows
+
+Staff includes an editable monthly salary, month-specific paid/remaining balances and payment history. Salaries use Gregorian calendar months, are not prorated, and do not automatically accrue cumulative arrears. Select the salary month when paying; the payment date records when money was actually paid. The first payment snapshots the month's salary, so later salary edits do not change that month's existing balance. Overpayments are rejected. Salary payments appear once in expenses and are included in expense totals.
+
+Shifts lists every staff member with Start shift / End shift controls. Starting after ending creates a new shift and keeps the completed history. Only one open shift is allowed per staff member. Old free-text shifts remain in history.
+
+Expenses require a reason, date and positive amount. Pay salary selects a staff member and month, records a payment date/amount and immediately updates their remaining balance.
+
+Settings saves station name, address and light/dark theme to the workspace. Language is a browser preference. Changes to the station identity appear in the sidebar and page headers.
+
+Reports cover daily, Monday-through-today weekly, month-to-date and all-time periods. Complete CSV includes sales, deliveries, expenses/payroll, shifts and current snapshots of inventory, staff, salary balances and pumps. Snapshot sections are explicitly labeled: they are not historical inventory valuations. JSON export contains all workspace records. Revenue less expenses is not net profit; it excludes cost-of-goods accounting.
+
+## Verification
 
 ```sh
-npm run build
 npm test
+npx playwright test
+npm run build
 ```
 
-## Connect your Supabase project
+Database tests use local PostgreSQL via PGlite. Browser tests run an isolated Vite server on port 5174 with mocked Supabase authentication and data; they do not use the real project or bypass production login. Install Google Chrome for the configured browser tests.
 
-1. Fill the existing `.env` file:
-   ```dotenv
-   VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
-   VITE_SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLIC_PUBLISHABLE_OR_ANON_KEY
-   ```
-2. Run the entire `supabase/schema.sql` in your project's SQL editor. It includes all three ordered migrations, supports the original schema, and is safe to rerun. See `supabase/README.md` for details.
-3. Create an email/password user in Supabase Authentication. This frontend intentionally has no public signup.
-4. Restart Vite, then sign in with that user. Authenticated workspaces start with empty transactions and zero stock. Record deliveries to add opening stock.
+## Current architecture
 
-Only use a publishable or anon key. Vite exposes these values to the browser; never use a secret/service-role key. `.env` is ignored by Git.
+One JSON workspace per authenticated owner, row-level access policies, validation and optimistic version checks. Staff records are not login accounts; shared stations, granular permissions, immutable accounting/audit history and hardware integration require additional backend work. SQL scripts are prepared and locally tested, not automatically applied to your Supabase project.
 
-## Included
+## Main dashboard totals
 
-- Login with Supabase email/password authentication and separate demo access.
-- Dashboard, tank inventory, manual pump maintenance status.
-- Sales and deliveries with stock validation and amount calculation.
-- Expenses, searchable records, staff contact records, open/close shift log.
-- Daily, current-week (Monday through today), current-month reports and CSV export, using Kabul dates and AFN.
-- Language selection, RTL, responsive layouts and reduced-motion support.
-
-## Scope and next production steps
-
-This is a frontend starter. The optional Supabase integration stores one JSON workspace per authenticated user with row-level security and optimistic version checks to avoid silent lost updates. Staff records do not create login accounts or grant permissions. Shared team stations, roles, server-side inventory validation, immutable accounting/audit records, supplier/customer credit, pump hardware integration, shift cash reconciliation, inventory valuation and profit accounting need a normalized backend before production use. The displayed revenue less expenses is explicitly not net profit. Fuel prices/capacities currently come from initial settings; record actual per-liter prices on entries. The illustration is not a live hardware feed. No real Supabase connection can be verified until credentials and schema are provided. Translations should be reviewed by native Afghan speakers before rollout.
+Overview shows today's sales, all-time sales/expenses through today, current fuel liters and selling value, total staff, staff currently on duty, and salary remaining for the current calendar month. On-duty staff are distinct registered staff with an open linked shift; legacy unlinked shifts are counted separately under open shifts. Detailed cards separate general expenses from salary payments, delivery purchases, monthly payroll and storage/pump status. Inventory selling value is stock times current selling price, not accounting cost. Summary cards open their related pages.

@@ -12,6 +12,7 @@ export function applyEntry(data,type,entry){
  next[type].unshift(entry);return next;
 }
 export function inPeriod(date,period,now){
+ if(period==='allTime')return date<=now;
  const end=new Date(now+'T00:00:00Z');const start=new Date(end);
  if(period==='weekly')start.setUTCDate(start.getUTCDate()-((start.getUTCDay()+6)%7));
  if(period==='monthly')start.setUTCDate(1);
